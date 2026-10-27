@@ -1,11 +1,13 @@
 import os
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 from dotenv import load_dotenv
 from pathlib import Path
 
 # Carrega as variáveis de ambiente do arquivo .env
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 def obter_conexao():
     """Cria a engine de conexão com o PostgreSQL usando SQLAlchemy."""
@@ -16,16 +18,21 @@ def obter_conexao():
     banco = os.getenv('DB_NAME')
     
     # CORREÇÃO: Força o uso do driver psycopg2 explicitamente
-    connection_string = f"postgresql+psycopg2://{usuario}:{senha}@{host}:{porta}/{banco}"
-    
-    # Cria a engine com pool_pre_ping para evitar conexões mortas
-    return create_engine(connection_string, pool_pre_ping=True)
+    obrigatorias = {"DB_USER": usuario, "DB_PASSWORD": senha, "DB_HOST": host, "DB_PORT": porta, "DB_NAME": banco}
+    ausentes = [chave for chave, valor in obrigatorias.items() if not valor]
+    if ausentes:
+        raise ValueError(f"Variáveis de conexão ausentes: {', '.join(ausentes)}")
+    url = URL.create(
+        "postgresql+psycopg2", username=usuario, password=senha,
+        host=host, port=int(porta), database=banco,
+    )
+    return create_engine(url, pool_pre_ping=True)
 
 def carregar_dados():
     """Lê o CSV validado e insere no banco PostgreSQL."""
     
     # 1. Caminho do arquivo
-    caminho_csv = Path("data/processed/dados_validos.csv")
+    caminho_csv = BASE_DIR / "data" / "processed" / "dados_validos.csv"
     
     # Verifica se o arquivo existe
     if not caminho_csv.exists():
@@ -41,8 +48,10 @@ def carregar_dados():
     engine = obter_conexao()
     
     print("Inserindo dados na tabela 'inspecoes'...")
-    # O if_exists='replace' recria a tabela se ela já existir, limpando os dados antigos
-    df.to_sql(name='inspecoes', con=engine, if_exists='replace', index=False)
+    # Limpa e recarrega em uma única transação, sem dropar constraints nem índices.
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM inspecoes"))
+        df.to_sql(name="inspecoes", con=connection, if_exists="append", index=False)
     
     print(f"✅ Sucesso! {len(df)} registros inseridos na tabela 'inspecoes'.")
 

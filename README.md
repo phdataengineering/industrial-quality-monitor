@@ -1,162 +1,132 @@
 # Industrial Quality Monitor
 
-Pipeline de dados de inspeção de qualidade industrial com previsão de refugo e assistente de consulta a procedimentos técnicos.
+**Projeto de portfólio em Engenharia de Dados e IA aplicada à qualidade industrial.** Um fluxo ponta a ponta, didático e reproduzível, que gera dados sintéticos, valida e persiste inspeções, treina um modelo de classificação e expõe previsões e consulta documental por API e interface gráfica.
 
-> Projeto de portfólio autodidata em **Engenharia de Dados** e **Engenharia de IA**.  
-> Dados 100% sintéticos. Sem vínculo com qualquer empregador.
+> **Escopo educacional:** todos os dados e procedimentos deste repositório são sintéticos. O modelo não foi validado em ambiente industrial e não deve orientar inspeções, descarte ou liberação de produtos reais.
 
----
+## Sobre o autor
 
-## Objetivo
+**Paulo Henryque Marcon Xavier Parente** é formado em Gestão da Produção Industrial, com pós-graduações lato sensu em **Engenharia da Qualidade, com ênfase em Gestão** (2025) e **Engenharia de Produção e Gerenciamento de Projetos** (2026). Tem experiência em qualidade e processos industriais, implantação e migração de ERP, indicadores e automação de tarefas com VBA, Python, SQL e ferramentas de IA generativa.
 
-Construir, em 90 dias, um portfólio público e reproduzível que demonstre competências em:
+Está em transição para **AI Engineering, Data Engineering / Analytics e DevOps Engineering**, aprofundando Python, ciência de dados e Power BI. Este projeto conecta sua experiência em produção, qualidade e processos a práticas de dados, machine learning, APIs e operação de aplicações. Foi construído como material didático para evolução profissional, com foco em compreender, revisar e validar cada parte do fluxo.
 
-- ETL, SQL e modelagem relacional
-- Machine Learning clássico (Scikit-learn)
-- RAG com LLMs locais
-- APIs (FastAPI) + Docker
+**Perfis:** [LinkedIn](https://www.linkedin.com/in/paulo-henryque-marcon-xavier-parente-942094157/) · [GitHub](https://github.com/phdataengineering). Aberto a conversas sobre oportunidades e colaboração técnica.
 
----
+## O que o projeto demonstra
 
-## Arquitetura (visão geral)
+- Geração determinística e validação de dados com Python e Pandas.
+- Persistência em PostgreSQL e consultas analíticas em SQL.
+- Pipeline Scikit-learn com pré-processamento, avaliação e artefato versionado por metadados.
+- RAG local com documentos Markdown, embeddings Hugging Face e busca vetorial FAISS (busca exata NumPy no Windows).
+- API REST com FastAPI, validação de entradas e readiness/liveness.
+- Interface Streamlit com simulador de defeitos e consulta a procedimentos.
+- Empacotamento e orquestração local com Docker Compose.
 
-```text
-Fonte sintética -> Validação (Pandas) -> PostgreSQL
-                                      -> ML (Scikit-learn) -> API FastAPI
-                                      -> RAG (LangChain + embeddings locais)
+## Fluxo e arquitetura
+
+```mermaid
+flowchart LR
+    A[Dados sintéticos] --> B[Validação Pandas]
+    B --> C[(PostgreSQL)]
+    B --> D[Treino Scikit-learn]
+    D --> E[Artefato ML]
+    F[Procedimentos Markdown] --> G[Embeddings + FAISS]
+    E --> H[API FastAPI]
+    G --> H
+    I[Interface Streamlit] --> H
 ```
 
----
+O PostgreSQL dá suporte à persistência e às análises de inspeção. A API carrega o artefato ML localmente e não consulta o banco durante uma predição. O frontend acessa a API pelo endereço interno `industrial-api:8000` na rede Compose.
 
-## Status atual
+## Interface
 
-| Fase | Nome | Status |
-| :--- | :--- | :--- |
-| 1 | Estrutura + Dados sintéticos | ✅ Concluída |
-| 2 | Validação e ETL com Pandas | ✅ Concluída |
-| 3 | Pipeline -> PostgreSQL | ✅ Concluída |
-| 4 | Machine Learning | ✅ Concluída |
-| 5 | LLMs + RAG | ✅ Concluída |
-| 6 | API + Docker | Pendente |
+A interface Streamlit contém duas abas:
 
----
+1. **Simulador de defeitos:** recebe turno, produto, operador e quantidade inspecionada; apresenta a classe prevista e a probabilidade estimada.
+2. **Consulta aos procedimentos:** envia uma pergunta aos documentos do projeto e exibe a resposta e suas fontes.
 
-## Como rodar (Fases 1 a 5)
+A predição aceita os valores usados no treinamento: turnos `diurno`, `tarde` e `noturno`; produtos `A` a `D`; operadores `OP01` a `OP08`; quantidade positiva. A pergunta ao RAG é limitada a 500 caracteres.
 
-### Pré-requisitos
-- Python 3.11+
-- Ambiente virtual (`venv`)
-- PostgreSQL instalado e rodando localmente
+## Tecnologias
+
+| Área | Tecnologias |
+| --- | --- |
+| Dados e validação | Python, Pandas, pytest |
+| Persistência e análise | PostgreSQL, SQLAlchemy, SQL |
+| Machine learning | Scikit-learn, joblib |
+| RAG | LangChain Core, LangChain Hugging Face, sentence-transformers, FAISS |
+| API e interface | FastAPI, Pydantic, Streamlit |
+| Execução | Docker, Docker Compose |
+
+O índice usa `faiss-cpu` diretamente em Linux/Docker; no Windows usa busca exata NumPy para evitar falhas de carregamento da DLL nativa. O projeto não depende do pacote `langchain-community` descontinuado.
+
+## Executar com Docker Compose
+
+Requer Docker com Compose. Na configuração padrão, a interface fica em `http://localhost:8501`, a API em `http://localhost:8001` e o PostgreSQL em `localhost:5432`.
 
 ```bash
-# Criar e ativar venv
+docker compose up --build
+```
+
+O primeiro build gera e valida os dados sintéticos e treina o artefato ML. O PostgreSQL aplica `sql/schema.sql` quando o volume é criado. A API só fica pronta depois de carregar o modelo; o frontend aguarda essa prontidão. A documentação interativa da API fica em `http://localhost:8001/docs`.
+
+Se as portas padrão estiverem ocupadas, defina `FRONTEND_PORT`, `API_PORT` ou `POSTGRES_PORT` antes de iniciar. Para encerrar os serviços, use `docker compose down`. Use `docker compose down -v` apenas se também quiser apagar o volume local do PostgreSQL.
+
+A primeira consulta ao RAG pode demorar enquanto os modelos Hugging Face são baixados. O PyTorch do container usa a variante CPU.
+
+## Executar sem Docker
+
+Requer Python 3.11+ e PostgreSQL. Instale as dependências, gere os dados e treine o modelo:
+
+```bash
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# Instalar dependências
+# Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-### Configuração do Banco de Dados (Fase 3)
-1. Crie um banco de dados no PostgreSQL chamado `industrial_quality`.
-2. Configure o arquivo `.env` na raiz com suas credenciais.
-3. Execute o script `sql/schema.sql` no Query Tool do pgAdmin.
-
-### Executando o Pipeline
-```bash
-# Gerar dados
 python src/gerar_dados.py
-
-# Validar dados
 python src/validar_dados.py
-
-# Carregar no banco
-python src/carregar_postgres.py
-
-# Treinar modelo ML
 python src/treinar_modelo.py
-
-# Executar Assistente RAG e Testes
-python src/rag_assistant.py
-pytest tests/test_rag_assistant.py
 ```
 
----
+Crie o banco, aplique `sql/schema.sql` e configure `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` e `DB_NAME` no `.env`. Em seguida, carregue as inspeções e inicie a API:
 
-## Detalhes das Fases Concluídas
-
-### Fase 3: Pipeline para PostgreSQL
-- Modelagem da tabela `inspecoes` com índices de performance.
-- Consultas analíticas salvas em `sql/consultas_analiticas.sql` (taxa de defeito por turno, produto e evolução mensal).
-
-### Fase 4: Machine Learning
-- **Modelos:** Regressão Logística (Baseline) e Random Forest (Principal).
-- **Sinal Aprendido:** A feature `turno_noturno` foi a 2ª mais importante, confirmando a calibração dos dados.
-- **Modelo Salvo:** Artefato gerado em `models/modelo_rf.joblib`.
-- **Limitações:** Documentadas em `docs/limitacoes.md`.
-
-### Fase 5: Assistente RAG com LLMs Locais
-- **Indexação Vetorial:** Uso de `FAISS` e embeddings locais (`sentence-transformers/all-MiniLM-L6-v2`).
-- **Geração Local:** Integração com Hugging Face Pipeline (`google/flan-t5-small`).
-- **Segurança Documental:** Camada de controle de escopo e regras determinísticas para dados críticos (códigos de defeito e limites dimensionais) antes do uso de IA generativa.
-- **Testes Automatizados:** Suíte completa em `tests/test_rag_assistant.py` cobrindo cenários de escopo, recusa e validação.
-
----
-
-## Estrutura do Repositório
-
-```text
-industrial-quality-monitor/
-├── data/                  # (raw/ e processed/ não versionados)
-├── src/
-│   ├── gerar_dados.py
-│   ├── validar_dados.py
-│   ├── carregar_postgres.py
-│   ├── treinar_modelo.py
-│   ├── rag_assistant.py
-│   └── api.py
-├── sql/
-│   ├── schema.sql
-│   └── consultas_analiticas.sql
-├── docs/
-│   ├── procedimentos/     # Documentação técnica em Markdown
-│   ├── arquitetura.md
-│   └── limitacoes.md
-├── tests/
-│   └── test_rag_assistant.py
-├── models/                # (não versionado)
-├── .gitignore
-├── .env
-├── README.md
-├── requirements.txt
-└── Dockerfile
+```bash
+python src/carregar_postgres.py
+uvicorn src.api:app --host 127.0.0.1 --port 8001
 ```
 
----
+Para iniciar o frontend fora do Compose, instale `frontend/requirements.txt` e defina `API_BASE_URL=http://localhost:8001` antes de executar `streamlit run frontend/app.py`.
 
-## Decisões Técnicas Importantes
+## Testes e validação
 
-- **Seed fixa (42):** Reprodutibilidade obrigatória.
-- **Sinal intencional no turno noturno:** Permite que o modelo de ML aprenda algo útil.
-- **Stack 100% local e gratuita:** Zero dependência de API paga.
-- **Dados sintéticos:** Elimina risco de vazamento de informação confidencial.
-- **Credenciais via `.env`:** Segurança e boas práticas.
+```bash
+python -m pytest -q
+```
 
----
+A suíte cobre geração/validação, regras do RAG, contratos dos handlers da API e a busca vetorial sem baixar modelos. A validação local mais recente registrou **37 testes aprovados e 3 subtestes**; também foram construídas as imagens Docker da API e do frontend, e a interface foi executada com verificação das duas abas e da comunicação com a API no Compose.
 
-## Regras de Uso de IA (Obrigatórias)
+## Reprodutibilidade e operação
 
-1. Antes de gerar código -> pedir explicação da tarefa e dos componentes.
-2. Durante -> alterações pequenas, justificadas e verificáveis.
-3. Depois -> executar e testar localmente.
-4. Ao finalizar -> explicar com as próprias palavras o que o código faz.
+- Seed fixa `42` para geração e treinamento sintéticos.
+- O artefato ML registra versão do artefato/modelo, seed, features e threshold.
+- `/health` verifica liveness sem iniciar downloads; `/ready` indica se o modelo ML foi carregado.
+- Frontend e API rodam em containers separados, sem privilégios de root.
+- Portas publicadas pelo Compose ficam vinculadas a `127.0.0.1` por padrão.
+- `.env`, dados locais e artefatos não são enviados no contexto Docker nem versionados.
 
-> *Se você não consegue explicar uma linha sem consultar a IA, essa linha ainda não é sua.*
+## Limitações
 
----
+- Os dados são artificiais e contêm um sinal de defeito por turno inserido intencionalmente.
+- Métricas de teste refletem somente esse conjunto sintético e não indicam desempenho em produção.
+- A probabilidade do modelo não é uma avaliação industrial validada.
+- O RAG responde com base nos documentos didáticos deste repositório; respostas generativas podem falhar e devem ser conferidas na fonte.
+- A aplicação é uma demonstração local, sem autenticação ou controles para exposição pública.
+
+Detalhes adicionais em [docs/limitacoes.md](docs/limitacoes.md) e [docs/arquitetura.md](docs/arquitetura.md).
+
+## Contato
+
+Este projeto é um material aberto para aprendizado e demonstração profissional. Para conversar sobre o projeto, oportunidades ou colaboração, entre em contato pelo [LinkedIn](https://www.linkedin.com/in/paulo-henryque-marcon-xavier-parente-942094157/) ou pelo [GitHub](https://github.com/phdataengineering).
 
 ## Licença
 
-MIT
+MIT. Consulte [LICENSE](LICENSE).

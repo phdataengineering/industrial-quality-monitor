@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import unicodedata
 from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
-from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
 from transformers import pipeline
@@ -52,6 +52,55 @@ MIN_COSINE_SIMILARITY = float(
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 75
+
+
+class FaissVectorIndex:
+    """Busca FAISS direta; usa distância exata NumPy no Windows."""
+
+    def __init__(self, documents: list[Document], embeddings: Any) -> None:
+        import numpy as np
+
+        self.documents = documents
+        self.embeddings = embeddings
+        vectors = np.asarray(
+            embeddings.embed_documents([doc.page_content for doc in documents]),
+            dtype="float32",
+        )
+        if vectors.ndim != 2 or len(vectors) != len(documents):
+            raise ValueError("Embeddings inválidos para criar índice FAISS.")
+        self.index = None
+        self.vectors = vectors
+        if sys.platform != "win32":
+            import faiss
+
+            self.index = faiss.IndexFlatL2(vectors.shape[1])
+            self.index.add(vectors)
+
+    @classmethod
+    def from_documents(cls, documents: list[Document], embeddings: Any):
+        return cls(documents, embeddings)
+
+    def similarity_search_with_score(
+        self, query: str, k: int = 4
+    ) -> list[tuple[Document, float]]:
+        import numpy as np
+
+        vector = np.asarray(
+            [self.embeddings.embed_query(query)], dtype="float32"
+        )
+        if self.index is None:
+            differences = self.vectors - vector[0]
+            distances = np.einsum("ij,ij->i", differences, differences)
+            indexes = np.argsort(distances)[: min(k, len(self.documents))]
+            matches = [(self.documents[i], float(distances[i])) for i in indexes]
+            return matches
+
+        distances, indexes = self.index.search(vector, min(k, len(self.documents)))
+        return [
+            (self.documents[index], float(distance))
+            for index, distance in zip(indexes[0], distances[0])
+            if index >= 0
+        ]
 
 REFUSAL = (
     "Não encontrei informações suficientes nos procedimentos "
@@ -236,7 +285,7 @@ def criar_assistente() -> dict[str, Any]:
     )
 
     print("Criando índice FAISS...")
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    vectorstore = FaissVectorIndex.from_documents(chunks, embeddings)
 
     print(f"Carregando modelo local: {GENERATION_MODEL}...")
 
