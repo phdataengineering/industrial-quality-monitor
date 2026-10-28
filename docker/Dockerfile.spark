@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+
+WORKDIR /app
+
+ARG SPARK_UID=1000
+ARG SPARK_GID=1000
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-21-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-spark.txt ./
+RUN pip install --no-cache-dir -r requirements-spark.txt
+COPY src/ ./src/
+
+RUN groupadd --gid "${SPARK_GID}" spark-group \
+    && useradd --create-home --uid "${SPARK_UID}" --gid spark-group --shell /usr/sbin/nologin spark-user \
+    && mkdir -p /app/data \
+    && chown -R spark-user:spark-group /app
+USER spark-user
+
+CMD ["python", "src/etl_spark.py"]

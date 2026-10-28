@@ -144,3 +144,39 @@ with tab_rag:
         score = rag_result.get("score_similaridade")
         if score is not None:
             st.caption(f"Similaridade informada pelo assistente: {float(score):.3f}")
+
+st.divider()
+st.subheader("Como o pipeline Spark processa as inspeções")
+st.caption(
+    "Fluxo ETL opcional para estudo e escalabilidade. O caminho padrão do projeto "
+    "continua usando Pandas; o Spark não é necessário para os dados sintéticos atuais."
+)
+st.graphviz_chart(
+    r'''digraph SparkETL {
+        graph [rankdir=LR, bgcolor="transparent", pad="0.2", nodesep="0.45", ranksep="0.6"];
+        node [shape=box, style="rounded,filled", fontname="sans-serif", fontsize=11, color="#64748b", fillcolor="#f8fafc", fontcolor="#0f172a", margin="0.16,0.10"];
+        edge [color="#475569", penwidth=1.5, arrowsize=0.8];
+        csv [label="CSV de inspeções\n(data/raw)", fillcolor="#e0f2fe"];
+        driver [label="Spark Driver\nSpark SQL + regras\nvalida schema e planeja tarefas", fillcolor="#ede9fe"];
+        tasks [label="Execução por partições\nlocal[2] neste projeto\nparalelismo demonstrativo", fillcolor="#fef3c7"];
+        valid [label="Inspeções válidas\nParquet\ncolunas do schema preservadas", fillcolor="#dcfce7"];
+        invalid [label="Inconsistências\nParquet + motivo da rejeição", fillcolor="#fee2e2"];
+        metrics [label="Agregações\npor turno e produto", fillcolor="#dbeafe"];
+        csv -> driver -> tasks;
+        tasks -> valid;
+        tasks -> invalid;
+        tasks -> metrics;
+    }''',
+    width="stretch",
+)
+with st.expander("Como executar o ETL Spark"):
+    st.code(
+        "python src/gerar_dados.py\n"
+        "docker compose --profile spark run --rm spark-etl",
+        language="bash",
+    )
+    st.write(
+        "As saídas ficam em `data/processed/spark/`: dados válidos, "
+        "inconsistências e indicadores agregados em Parquet. O perfil Spark "
+        "é separado para não aumentar as imagens nem o consumo do Compose padrão."
+    )

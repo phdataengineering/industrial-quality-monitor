@@ -21,6 +21,7 @@ Está em transição para **AI Engineering, Data Engineering / Analytics e DevOp
 - API REST com FastAPI, validação de entradas e readiness/liveness.
 - Interface Streamlit com simulador de defeitos e consulta a procedimentos.
 - Empacotamento e orquestração local com Docker Compose.
+- Pipeline ETL alternativo em PySpark para validação distribuível, saída Parquet e agregações.
 
 ## Fluxo e arquitetura
 
@@ -34,9 +35,13 @@ flowchart LR
     E --> H[API FastAPI]
     G --> H
     I[Interface Streamlit] --> H
+    A --> J[ETL alternativo PySpark]
+    J --> K[Parquet curado + inconsistências + agregações]
 ```
 
 O PostgreSQL dá suporte à persistência e às análises de inspeção. A API carrega o artefato ML localmente e não consulta o banco durante uma predição. O frontend acessa a API pelo endereço interno `industrial-api:8000` na rede Compose.
+
+O ETL PySpark é opcional e executa em perfil separado. Ele lê o CSV bruto, aplica as regras de qualidade, preserva as colunas e tipos da inspeção no Parquet curado e gera saídas de inconsistências e indicadores por turno/produto. Não altera o schema SQL nem substitui o ETL Pandas padrão. A interface mostra um diagrama didático desse fluxo; neste repositório, `local[2]` demonstra o processamento por partições em uma máquina, não um cluster distribuído.
 
 ## Interface
 
@@ -52,6 +57,7 @@ A predição aceita os valores usados no treinamento: turnos `diurno`, `tarde` e
 | Área | Tecnologias |
 | --- | --- |
 | Dados e validação | Python, Pandas, pytest |
+| ETL escalável opcional | Apache Spark / PySpark, Parquet |
 | Persistência e análise | PostgreSQL, SQLAlchemy, SQL |
 | Machine learning | Scikit-learn, joblib |
 | RAG | LangChain Core, LangChain Hugging Face, sentence-transformers, FAISS |
@@ -73,6 +79,19 @@ O primeiro build gera e valida os dados sintéticos e treina o artefato ML. O Po
 Se as portas padrão estiverem ocupadas, defina `FRONTEND_PORT`, `API_PORT` ou `POSTGRES_PORT` antes de iniciar. Para encerrar os serviços, use `docker compose down`. Use `docker compose down -v` apenas se também quiser apagar o volume local do PostgreSQL.
 
 A primeira consulta ao RAG pode demorar enquanto os modelos Hugging Face são baixados. O PyTorch do container usa a variante CPU.
+
+### Executar o ETL Spark opcional
+
+Gere os dados brutos no workspace e execute apenas o serviço do perfil Spark:
+
+```bash
+python src/gerar_dados.py
+docker compose --profile spark run --rm spark-etl
+```
+
+As saídas Parquet são gravadas em `data/processed/spark/`. Esse perfil usa uma imagem própria com Java e PySpark e não é iniciado no `docker compose up` padrão. PySpark 4 requer Java 17 ou superior; veja os [requisitos oficiais de instalação](https://spark.apache.org/docs/latest/api/python/getting_started/install.html).
+
+Em hosts Linux, a imagem cria o usuário sem privilégios com UID/GID `1000:1000` para gravar os resultados no diretório montado. Se sua conta usar outros IDs, defina `SPARK_UID` e `SPARK_GID` no ambiente antes de construir a imagem.
 
 ## Executar sem Docker
 
@@ -103,6 +122,8 @@ python -m pytest -q
 ```
 
 A suíte cobre geração/validação, regras do RAG, contratos dos handlers da API e a busca vetorial sem baixar modelos. A validação local mais recente registrou **37 testes aprovados e 3 subtestes**; também foram construídas as imagens Docker da API e do frontend, e a interface foi executada com verificação das duas abas e da comunicação com a API no Compose.
+
+O teste adicional do ETL Spark em `tests/test_etl_spark.py` requer PySpark e Java 17 ou superior; sem a dependência opcional, ele é ignorado pela suíte. Nesta revisão, o container Spark processou 1.000 registros válidos, e um fixture com dados inválidos produziu 1 registro válido e 6 inconsistências com motivos verificáveis. O AppTest do Streamlit confirmou as duas abas e um diagrama Graphviz sem exceções.
 
 ## Reprodutibilidade e operação
 

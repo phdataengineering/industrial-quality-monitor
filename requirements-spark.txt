@@ -1,0 +1,2 @@
+# Spark is an optional ETL profile and is intentionally excluded from the API image.
+pyspark==4.0.1

@@ -10,6 +10,20 @@ Procedimentos Markdown -> embeddings Hugging Face + FAISS -> API /rag/ask
 Usuário -> Streamlit (simulador e procedimentos) -> API FastAPI
 ```
 
+## Pipeline alternativo com Apache Spark
+
+O caminho Pandas permanece como padrão para o conjunto sintético pequeno. Para demonstrar processamento tabular distribuível, o perfil Compose `spark` oferece um ETL alternativo:
+
+```text
+CSV bruto → Spark Driver / Spark SQL → tarefas por partições → Parquet curado
+                                                     ├→ inconsistências + motivo
+                                                     └→ agregações por turno/produto
+```
+
+O Spark lê o mesmo schema de inspeções e grava o conjunto válido mantendo as colunas da tabela `inspecoes`. Os arquivos de saída ficam em `data/processed/spark/`; nenhum comando Spark modifica diretamente o PostgreSQL. Para executar, gere `data/raw/inspecoes.csv` com `python src/gerar_dados.py` e rode `docker compose --profile spark run --rm spark-etl`.
+
+O serviço usa `local[2]`, com interface Spark Web desabilitada, limites de CPU/memória, usuário sem privilégios e sem capacidades Linux adicionais. É uma demonstração local de planejamento e processamento por partições; para cluster real seriam necessários armazenamento, rede, monitoramento e orquestração próprios. Não é necessário para a escala atual.
+
 ## Responsabilidades e operação
 
 - O PostgreSQL armazena inspeções para consultas analíticas. A API não consulta o banco durante uma predição: ela carrega o pipeline ML do arquivo `models/modelo_rf.joblib`.
